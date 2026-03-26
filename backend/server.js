@@ -7,8 +7,16 @@ dotenv.config();
 
 const app = express();
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads directory');
+}
+
 // SIMPLE CORS - Allow all origins for now (fix properly once working)
 app.use(cors());
+app.use('/uploads', express.static(uploadsDir));
 
 // Also handle preflight explicitly
 app.options('*', cors());
