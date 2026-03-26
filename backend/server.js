@@ -35,6 +35,25 @@ app.use(cors(corsOptions));
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
 
+// Custom CORS header middleware (fallback)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://techsolution123.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5000'
+  ];
+  
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+  
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -73,11 +92,26 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/techsolut
   console.error('Please check your MONGODB_URI in .env file');
 });
 
-// Always listen on a port (Render requires this; Vercel uses module.exports below)
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+// Error handling middleware (must be last)
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  const statusCode = err.statusCode || 500;
+  const message = err.message || 'Internal server error';
+  
+  res.status(statusCode).json({
+    success: false,
+    message,
+    error: process.env.NODE_ENV === 'production' ? undefined : err
+  });
 });
+
+// For local development only - NOT for Vercel serverless
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
 
 // Export for Vercel serverless
 module.exports = app;
