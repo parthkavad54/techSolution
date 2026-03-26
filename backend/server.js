@@ -7,11 +7,34 @@ dotenv.config();
 
 const app = express();
 
+// CORS Configuration - Enhanced for Vercel
+const corsOptions = {
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'https://techsolution123.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:5000'
+    ];
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // 24 hours
+};
+
 // Middleware
-app.use(cors({
-  origin: ['https://techsolution123.vercel.app', 'http://localhost:3000'],
-  credentials: true
-}));
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
