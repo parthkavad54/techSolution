@@ -7,55 +7,14 @@ dotenv.config();
 
 const app = express();
 
-// CORS Configuration - Enhanced for Vercel
-const corsOptions = {
-  origin: function(origin, callback) {
-    const allowedOrigins = [
-      'https://techsolution123.vercel.app',
-      'http://localhost:3000',
-      'http://localhost:5000'
-    ];
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400 // 24 hours
-};
+// SIMPLE CORS - Allow all origins for now (fix properly once working)
+app.use(cors());
 
-// Middleware
-app.use(cors(corsOptions));
+// Also handle preflight explicitly
+app.options('*', cors());
 
-// Handle preflight requests explicitly
-app.options('*', cors(corsOptions));
-
-// Custom CORS header middleware (fallback)
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://techsolution123.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:5000'
-  ];
-  
-  if (!origin || allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  }
-  
-  next();
-});
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -65,32 +24,42 @@ app.use('/api/leave', require('./routes/leave'));
 app.use('/api/payroll', require('./routes/payroll'));
 app.use('/api/admin', require('./routes/admin'));
 
-// Health check
+// Health check - MUST work even if MongoDB is down
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Tech Solution HRMS API is running' });
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/techsolution', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(async () => {
-  console.log('MongoDB connected successfully');
-  
-  // Seed default admin if it doesn't exist
+// Database connection - NON-BLOCKING
+let dbConnected = false;
+
+const connectDB = async () => {
   try {
-    const seedAdmin = require('./scripts/seedAdmin');
-    await seedAdmin();
-  } catch (error) {
-    console.error('Error seeding admin (non-fatal):', error.message);
-    // Don't stop server if seeding fails
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/techsolution', {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    dbConnected = true;
+    console.log('✅ MongoDB connected successfully');
+    
+    // Seed admin after DB connected
+    try {
+      const seedAdmin = require('./scripts/seedAdmin');
+      await seedAdmin();
+    } catch (error) {
+      console.log('ℹ️  Admin seeding skipped (non-fatal):', error.message);
+    }
+  } catch (err) {
+    dbConnected = false;
+    console.error('❌ MongoDB connection failed:', err.message);
+    // Don't exit - backend will still serve with limited functionality
+    console.log('⚠️  Backend running in degraded mode (MongoDB down)');
   }
-})
-.catch((err) => {
-  console.error('MongoDB connection error:', err);
-  console.error('Please check your MONGODB_URI in .env file');
-});
+};
+
+// Start DB connection in background
+connectDB();
 
 // Error handling middleware (must be last)
 app.use((err, req, res, next) => {
